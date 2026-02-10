@@ -1,7 +1,7 @@
 1. Cupcakes for points
 2. Pink world(Design)
 3. Unicorns(Player)
-4. 3 lanes
+4. 3 lanes "Done"
 5. Obstacles with comunism image
 6. Running from comunism to democracy
 7. Abilitati pe baza la ceva obiecte 

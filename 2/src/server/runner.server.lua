@@ -2,6 +2,9 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local cupcakeTemplate = ServerStorage:WaitForChild("Cupcake")
+
 local LANE_X = { -10, 0, 10 }
 local OBSTACLE_PER_LANE_CHANCE = 0.55 -- chance each lane gets an obstacle on a segment
 local COIN_PER_LANE_CHANCE = 0.25     -- optional: coins per lane
@@ -25,6 +28,34 @@ local OBSTACLE_CHANCE = 0.3
 -- this runner will have ONE track for now
 local segments = {}  -- array of segment models
 local lastIndexSpawned = -1
+
+local function placeModelAt(model: Model, worldPos: Vector3)
+	-- Find a PrimaryPart (or assign one)
+	if not model.PrimaryPart then
+		local pp = model:FindFirstChildWhichIsA("BasePart", true)
+		if pp then model.PrimaryPart = pp end
+	end
+	if not model.PrimaryPart then
+		warn("CupcakePickup has no BasePart inside it.")
+		return
+	end
+
+	-- Make sure parts behave like a pickup
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanTouch = true   -- IMPORTANT if we use touch pickup
+			d.CanQuery = true
+		end
+	end
+
+	-- Lift by half height so it sits on top of floor
+	local yLift = (model.PrimaryPart.Size.Y / 2) + 1.5
+
+	model:PivotTo(CFrame.new(worldPos + Vector3.new(0, yLift, 0)))
+end
+
 
 -- make a part helper
 local function makePart(size, color, anchored, canCollide)
@@ -56,12 +87,12 @@ local function createSegment(index)
 	model.PrimaryPart = floor
 
 	for _, laneX in ipairs(LANE_X) do
+		-- choose a Z offset inside the segment (avoid edges)
+
 		-- random obstacle in this lane
 		if math.random() < OBSTACLE_PER_LANE_CHANCE then
 			local obstacle = makePart(Vector3.new(4, 6, 4), Color3.fromRGB(180, 20, 20), true, true)
 			obstacle.Name = "Obstacle"
-
-			-- choose a Z offset inside the segment (avoid edges)
 			local zOffset = math.random(-SEGMENT_LENGTH/2 + 8, SEGMENT_LENGTH/2 - 8)
 
 			obstacle.CFrame = floor.CFrame * CFrame.new(laneX, 4, zOffset)
@@ -83,29 +114,65 @@ local function createSegment(index)
 
 		-- optional: random coin in this lane
 		if math.random() < COIN_PER_LANE_CHANCE then
-			local coin = makePart(Vector3.new(2,2,2), Color3.fromRGB(255, 220, 0), false, false)
-			coin.Shape = Enum.PartType.Ball
-			coin.Name = "Coin"
+			-- clone cupcake model
+			local cupcake = cupcakeTemplate:Clone()
+			cupcake.Name = "Cupcake"
 
+			-- pick spawn position on this lane
 			local zOffset = math.random(-SEGMENT_LENGTH/2 + 10, SEGMENT_LENGTH/2 - 10)
-			coin.Position = floor.Position + Vector3.new(laneX, 5, zOffset)
-			coin.Parent = model
+
+			-- ensure PrimaryPart exists (needed for PivotTo)
+			if not cupcake.PrimaryPart then
+				local pp = cupcake:FindFirstChildWhichIsA("BasePart", true)
+				if pp then cupcake.PrimaryPart = pp end
+			end
+			if not cupcake.PrimaryPart then
+				warn("CupcakePickup has no BasePart inside it, can't place it.")
+				return
+			end
+
+			-- make all parts behave like a pickup
+			for _, d in ipairs(cupcake:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanTouch = true
+					d.CanQuery = false
+				end
+			end
+
+			-- place it above the floor (lift by half its height)
+			local floorTopY = floor.Position.Y+3 + (floor.Size.Y / 2) 
+			local yLift = (cupcake.PrimaryPart.Size.Y / 2) + 0.5
+
+			local worldPos = Vector3.new(floor.Position.X + laneX, floorTopY + yLift, floor.Position.Z + zOffset)
+			cupcake:PivotTo(CFrame.new(worldPos))
+
+			cupcake.Parent = model
+
+			-- IMPORTANT: Models don't have Touched, so use a BasePart inside the model
+			local touchPart = cupcake.PrimaryPart
 
 			local collected = false
-			coin.Touched:Connect(function(hit)
+			touchPart.Touched:Connect(function(hit)
 				if collected then return end
-				local plr = Players:GetPlayerFromCharacter(hit.Parent)
-				if plr then
-					local ls = plr:FindFirstChild("leaderstats")
-					local coins = ls and ls:FindFirstChild("Coins")
-					if coins then
-						collected = true
-						coins.Value += 1
-						coin:Destroy()
-					end
-				end
+
+				local character = hit:FindFirstAncestorOfClass("Model")
+				if not character then return end
+
+				local plr = Players:GetPlayerFromCharacter(character)
+				if not plr then return end
+
+				local ls = plr:FindFirstChild("leaderstats")
+				local coins = ls and ls:FindFirstChild("Coins")
+				if not coins then return end
+
+				collected = true
+				coins.Value += 1
+				cupcake:Destroy()
 			end)
 		end
+
 	end
 
 	model.Parent = Workspace
