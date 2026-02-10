@@ -6,24 +6,44 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local advanceEvent = ReplicatedStorage:WaitForChild("RunnerAdvance")
 
--- speeds
-local FORWARD_SPEED = 19      -- studs/sec for Humanoid:Move
-local STRAFE_SPEED = 19       -- studs/sec
-local MAX_X = 12
+local FORWARD_SPEED =  	22
+
+-- lanes (must match server)
+local LANE_X = { -10, 0, 10 }
+local laneIndex = 2
 
 local SEGMENT_LENGTH = 50
 local TRIGGER_MULT = 0.7
 local nextTriggerZ = -(SEGMENT_LENGTH * TRIGGER_MULT)
 
-local moveLeft = false
-local moveRight = false
+local function clampLane(i)
+	return math.clamp(i, 1, #LANE_X)
+end
+
+local function snapToLane()
+	local char = player.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local pos = hrp.Position
+	local targetX = LANE_X[laneIndex]
+
+	-- snap ONLY X, keep current Y/Z and rotation
+	hrp.CFrame = CFrame.new(targetX, pos.Y, pos.Z) * CFrame.Angles(0, hrp.Orientation.Y * math.pi/180, 0)
+end
 
 UIS.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
+
 	if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.Left then
-		moveLeft = true
+		laneIndex = clampLane(laneIndex - 1)
+		snapToLane()
+
 	elseif input.KeyCode == Enum.KeyCode.D or input.KeyCode == Enum.KeyCode.Right then
-		moveRight = true
+		laneIndex = clampLane(laneIndex + 1)
+		snapToLane()
+
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local char = player.Character
 		if char then
@@ -33,12 +53,10 @@ UIS.InputBegan:Connect(function(input, gpe)
 	end
 end)
 
-UIS.InputEnded:Connect(function(input)
-	if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.Left then
-		moveLeft = false
-	elseif input.KeyCode == Enum.KeyCode.D or input.KeyCode == Enum.KeyCode.Right then
-		moveRight = false
-	end
+-- also snap on spawn (so you start perfectly centered)
+player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	snapToLane()
 end)
 
 RunService.RenderStepped:Connect(function(dt)
@@ -48,30 +66,12 @@ RunService.RenderStepped:Connect(function(dt)
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hrp or not hum then return end
 
-	-- we want to run forward toward -Z
-	local moveVec = Vector3.new(0, 0, -FORWARD_SPEED)
+	-- only forward movement
+	hum:Move(Vector3.new(0, 0, -FORWARD_SPEED), true)
 
-	-- add left/right
-	if moveLeft then
-		moveVec += Vector3.new(-STRAFE_SPEED, 0, 0)
-	end
-	if moveRight then
-		moveVec += Vector3.new(STRAFE_SPEED, 0, 0)
-	end
-
-	-- clamp X so we don't fall
-	--local pos = hrp.Position
-	--if math.abs(pos.X) > MAX_X then
-		-- if too far, snap back a bit (optional)
-		--hrp.CFrame = CFrame.new(Vector3.new(math.clamp(pos.X, -MAX_X, MAX_X), pos.Y, pos.Z), hrp.CFrame.LookVector + hrp.Position)
-	--end
-
-	-- tell the humanoid to move in that direction (world space)
-	hum:Move(moveVec, true)
-
-	-- trigger server for next segment
+	-- segment trigger
 	if hrp.Position.Z <= nextTriggerZ then
 		advanceEvent:FireServer()
-		nextTriggerZ = nextTriggerZ - SEGMENT_LENGTH
+		nextTriggerZ -= SEGMENT_LENGTH
 	end
 end)

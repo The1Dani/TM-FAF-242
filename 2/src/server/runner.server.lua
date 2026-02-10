@@ -2,6 +2,9 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LANE_X = { -10, 0, 10 }
+local OBSTACLE_PER_LANE_CHANCE = 0.55 -- chance each lane gets an obstacle on a segment
+local COIN_PER_LANE_CHANCE = 0.25     -- optional: coins per lane
 
 -- create / get remote
 local advanceEvent = ReplicatedStorage:FindFirstChild("RunnerAdvance")
@@ -52,48 +55,57 @@ local function createSegment(index)
 	floor.Parent = model
 	model.PrimaryPart = floor
 
-	-- maybe coin
-	if math.random() < COIN_CHANCE then
-		local coin = makePart(Vector3.new(2,2,2), Color3.fromRGB(255, 220, 0), false, false)
-		coin.Shape = Enum.PartType.Ball
-		coin.Name = "Coin"
-		coin.Position = floor.Position + Vector3.new(
-			math.random(-SEGMENT_WIDTH/2 + 3, SEGMENT_WIDTH/2 - 3),
-			5,
-			math.random(-SEGMENT_LENGTH/2 + 5, SEGMENT_LENGTH/2 - 5)
-		)
-		coin.Parent = model
+	for _, laneX in ipairs(LANE_X) do
+		-- random obstacle in this lane
+		if math.random() < OBSTACLE_PER_LANE_CHANCE then
+			local obstacle = makePart(Vector3.new(4, 6, 4), Color3.fromRGB(180, 20, 20), true, true)
+			obstacle.Name = "Obstacle"
 
-		coin.Touched:Connect(function(hit)
-			local plr = Players:GetPlayerFromCharacter(hit.Parent)
-			if plr then
-				local ls = plr:FindFirstChild("leaderstats")
-				if ls and ls:FindFirstChild("Coins") then
-					ls.Coins.Value += 1
+			-- choose a Z offset inside the segment (avoid edges)
+			local zOffset = math.random(-SEGMENT_LENGTH/2 + 8, SEGMENT_LENGTH/2 - 8)
+
+			obstacle.CFrame = floor.CFrame * CFrame.new(laneX, 4, zOffset)
+			obstacle.Parent = model
+
+			local hitOnce = false
+			obstacle.Touched:Connect(function(hit)
+				if hitOnce then return end
+				local plr = Players:GetPlayerFromCharacter(hit.Parent)
+				if plr and plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health > 0 then
+						hitOnce = true
+						hum.Health = 0
+					end
 				end
-				coin:Destroy()
-			end
-		end)
-	end
+			end)
+		end
 
-	-- maybe obstacle
-	if math.random() < OBSTACLE_CHANCE then
-		local obstacle = makePart(Vector3.new(4, 6, 4), Color3.fromRGB(180, 20, 20), true, true)
-		obstacle.Name = "Obstacle"
-		obstacle.CFrame = floor.CFrame * CFrame.new(
-			math.random(-SEGMENT_WIDTH/2 + 5, SEGMENT_WIDTH/2 - 5),
-			4,
-			math.random(-SEGMENT_LENGTH/2 + 5, SEGMENT_LENGTH/2 - 5)
-		)
-		obstacle.Parent = model
+		-- optional: random coin in this lane
+		if math.random() < COIN_PER_LANE_CHANCE then
+			local coin = makePart(Vector3.new(2,2,2), Color3.fromRGB(255, 220, 0), false, false)
+			coin.Shape = Enum.PartType.Ball
+			coin.Name = "Coin"
 
-		obstacle.Touched:Connect(function(hit)
-			local plr = Players:GetPlayerFromCharacter(hit.Parent)
-			if plr and plr.Character then
-				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-				if hum then hum.Health = 0 end
-			end
-		end)
+			local zOffset = math.random(-SEGMENT_LENGTH/2 + 10, SEGMENT_LENGTH/2 - 10)
+			coin.Position = floor.Position + Vector3.new(laneX, 5, zOffset)
+			coin.Parent = model
+
+			local collected = false
+			coin.Touched:Connect(function(hit)
+				if collected then return end
+				local plr = Players:GetPlayerFromCharacter(hit.Parent)
+				if plr then
+					local ls = plr:FindFirstChild("leaderstats")
+					local coins = ls and ls:FindFirstChild("Coins")
+					if coins then
+						collected = true
+						coins.Value += 1
+						coin:Destroy()
+					end
+				end
+			end)
+		end
 	end
 
 	model.Parent = Workspace
