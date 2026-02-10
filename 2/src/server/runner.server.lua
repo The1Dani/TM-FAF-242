@@ -24,10 +24,20 @@ local START_Y = 50
 local SEGMENTS_AHEAD = 8       -- how many we keep in front
 local COIN_CHANCE = 0.4
 local OBSTACLE_CHANCE = 0.3
+local SPAWN_START_AHEAD = 8  -- studs; ~2 meters ≈ 2 studs, but use 6–12 for visibility
 
 -- this runner will have ONE track for now
 local segments = {}  -- array of segment models
 local lastIndexSpawned = -1
+local function randomForwardZ(margin)
+	-- spawn only in the "front" part of the segment (toward -Z)
+	local minZ = -SEGMENT_LENGTH/2 + margin
+	local maxZ = -SPAWN_START_AHEAD -- must stay negative to be in front direction
+	if maxZ <= minZ then
+		maxZ = minZ + 1
+	end
+	return math.random(minZ, maxZ)
+end
 
 local function placeModelAt(model: Model, worldPos: Vector3)
 	-- Find a PrimaryPart (or assign one)
@@ -85,43 +95,57 @@ local function createSegment(index)
 	floor.Name = "Floor"
 	floor.Parent = model
 	model.PrimaryPart = floor
+	local spawnLane = {}
+	local count = 0
 
-	for _, laneX in ipairs(LANE_X) do
-		-- choose a Z offset inside the segment (avoid edges)
+	for i = 1, #LANE_X do
+		spawnLane[i] = (math.random() < OBSTACLE_PER_LANE_CHANCE)
+		if spawnLane[i] then count += 1 end
+	end
 
-		-- random obstacle in this lane
-		if math.random() < OBSTACLE_PER_LANE_CHANCE then
+	-- prevent 3/3 blocked: force one random lane to be empty
+	if count == #LANE_X then
+		local open = math.random(1, #LANE_X)
+		spawnLane[open] = false
+		count -= 1
+	end
+
+	for i, laneX in ipairs(LANE_X) do
+	-- remember obstacle Z for this lane (if any)
+		local obstacleZ = nil
+
+		-- spawn obstacle if pattern says so
+		if spawnLane[i] then
 			local obstacle = makePart(Vector3.new(4, 6, 4), Color3.fromRGB(180, 20, 20), true, true)
 			obstacle.Name = "Obstacle"
-			local zOffset = math.random(-SEGMENT_LENGTH/2 + 8, SEGMENT_LENGTH/2 - 8)
 
-			obstacle.CFrame = floor.CFrame * CFrame.new(laneX, 4, zOffset)
+			obstacleZ = randomForwardZ(8)
+			obstacle.CFrame = floor.CFrame * CFrame.new(laneX, 4, obstacleZ)
 			obstacle.Parent = model
 
 			local hitOnce = false
 			obstacle.Touched:Connect(function(hit)
 				if hitOnce then return end
-				local plr = Players:GetPlayerFromCharacter(hit.Parent)
-				if plr and plr.Character then
-					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-					if hum and hum.Health > 0 then
-						hitOnce = true
-						hum.Health = 0
-					end
+				local character = hit:FindFirstAncestorOfClass("Model")
+				if not character then return end
+
+				local plr = Players:GetPlayerFromCharacter(character)
+				if not plr then return end
+
+				local hum = character:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 then
+					hitOnce = true
+					hum.Health = 0
 				end
 			end)
 		end
 
-		-- optional: random coin in this lane
+		-- cupcake spawn
 		if math.random() < COIN_PER_LANE_CHANCE then
-			-- clone cupcake model
 			local cupcake = cupcakeTemplate:Clone()
 			cupcake.Name = "Cupcake"
 
-			-- pick spawn position on this lane
-			local zOffset = math.random(-SEGMENT_LENGTH/2 + 10, SEGMENT_LENGTH/2 - 10)
-
-			-- ensure PrimaryPart exists (needed for PivotTo)
+			-- ensure PrimaryPart exists
 			if not cupcake.PrimaryPart then
 				local pp = cupcake:FindFirstChildWhichIsA("BasePart", true)
 				if pp then cupcake.PrimaryPart = pp end
@@ -131,7 +155,7 @@ local function createSegment(index)
 				return
 			end
 
-			-- make all parts behave like a pickup
+			-- make pickup parts
 			for _, d in ipairs(cupcake:GetDescendants()) do
 				if d:IsA("BasePart") then
 					d.Anchored = true
@@ -141,20 +165,35 @@ local function createSegment(index)
 				end
 			end
 
-			-- place it above the floor (lift by half its height)
-			local floorTopY = floor.Position.Y+3 + (floor.Size.Y / 2) 
+			-- pick a cupcake Z that doesn't overlap the obstacle in same lane
+			local cupcakeZ = randomForwardZ(10)
+			local MIN_GAP_Z = 10 -- studs between cupcake and obstacle
+
+			if obstacleZ then
+				local tries = 0
+				while math.abs(cupcakeZ - obstacleZ) < MIN_GAP_Z and tries < 12 do
+					cupcakeZ = randomForwardZ(10)
+					tries += 1
+				end
+
+				-- fallback: if still too close, shove it forward/back
+				if math.abs(cupcakeZ - obstacleZ) < MIN_GAP_Z then
+					cupcakeZ = obstacleZ + (cupcakeZ >= obstacleZ and MIN_GAP_Z or -MIN_GAP_Z)
+					cupcakeZ = math.clamp(cupcakeZ, -SEGMENT_LENGTH/2 + 10, SEGMENT_LENGTH/2 - 10)
+				end
+			end
+
+			-- place it above the floor
+			local floorTopY = floor.Position.Y+2 + (floor.Size.Y / 2)
 			local yLift = (cupcake.PrimaryPart.Size.Y / 2) + 0.5
 
-			local worldPos = Vector3.new(floor.Position.X + laneX, floorTopY + yLift, floor.Position.Z + zOffset)
+			local worldPos = Vector3.new(floor.Position.X + laneX, floorTopY + yLift, floor.Position.Z + cupcakeZ)
 			cupcake:PivotTo(CFrame.new(worldPos))
-
 			cupcake.Parent = model
 
-			-- IMPORTANT: Models don't have Touched, so use a BasePart inside the model
-			local touchPart = cupcake.PrimaryPart
-
+			-- touch pickup (on PrimaryPart)
 			local collected = false
-			touchPart.Touched:Connect(function(hit)
+			cupcake.PrimaryPart.Touched:Connect(function(hit)
 				if collected then return end
 
 				local character = hit:FindFirstAncestorOfClass("Model")
@@ -172,8 +211,8 @@ local function createSegment(index)
 				cupcake:Destroy()
 			end)
 		end
-
 	end
+
 
 	model.Parent = Workspace
 	return model
