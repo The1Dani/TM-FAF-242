@@ -99,7 +99,6 @@ local function createSegment(index)
 	model.Parent = Workspace
 	return model
 end
-
 -- build initial 8 segments
 local function buildInitialTrack()
 	segments = {}
