@@ -1,5 +1,5 @@
-1. Cupcakes for points
-2. Pink world(Design)
+1. Cupcakes for points "Done"
+2. Pink world(Design) "Done"
 3. Unicorns(Player)
 4. 3 lanes "Done"
 5. Obstacles with comunism image

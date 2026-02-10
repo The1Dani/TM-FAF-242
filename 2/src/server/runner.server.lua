@@ -87,7 +87,7 @@ local function createSegment(index)
 
 	local floor = makePart(
 		Vector3.new(SEGMENT_WIDTH, 2, SEGMENT_LENGTH),
-		Color3.fromRGB(60, 60, 60),
+		Color3.fromRGB(121, 200, 245),
 		true,
 		true
 	)
@@ -203,11 +203,11 @@ local function createSegment(index)
 				if not plr then return end
 
 				local ls = plr:FindFirstChild("leaderstats")
-				local coins = ls and ls:FindFirstChild("Coins")
-				if not coins then return end
+				local score = ls and ls:FindFirstChild("Score") -- <- HERE
+				if not score then return end
 
 				collected = true
-				coins.Value += 1
+				score.Value += 1
 				cupcake:Destroy()
 			end)
 		end

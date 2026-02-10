@@ -6,7 +6,7 @@ Players.PlayerAdded:Connect(function(player)
 	stats.Parent = player
 
 	local coins = Instance.new("IntValue")
-	coins.Name = "Coins"
+	coins.Name = "Score"
 	coins.Value = 0
 	coins.Parent = stats
 end)
