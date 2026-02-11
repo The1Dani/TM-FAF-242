@@ -20,6 +20,12 @@
         
       }
     },
+    "StarterGui": {
+      "HUD": {
+        "$className": "ScreenGui",
+        "$path": "src/client/StarterGui/HUD"
+      }
+    },
 
     "Workspace": {
       "$properties": {
