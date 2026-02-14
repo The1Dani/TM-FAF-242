@@ -1,6 +1,6 @@
 1. Cupcakes for points "Done"
 2. Pink world(Design) "Done"
-3. Unicorns(Player)
+3. Unicorns(Player) "Done"
 4. 3 lanes "Done"
 5. Obstacles with comunism image
 6. Running from comunism to democracy

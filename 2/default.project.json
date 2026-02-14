@@ -15,15 +15,16 @@
 
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        
-          "$path": "src/client"
-        
+        "$path": "src/client"
+      },
+      "StarterCharacter": {
+        "$path": "src/assets/StarterCharacter.rbxmx"
       }
     },
     "StarterGui": {
+      "$className": "ScreenGui",
       "HUD": {
-        "$className": "ScreenGui",
-        "$path": "src/client/StarterGui/HUD"
+        "$path": "src/client/StarterGui"
       }
     },
 

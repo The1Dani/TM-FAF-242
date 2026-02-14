@@ -9,13 +9,131 @@ local LANE_X = { -10, 0, 10 }
 local OBSTACLE_PER_LANE_CHANCE = 0.55 -- chance each lane gets an obstacle on a segment
 local COIN_PER_LANE_CHANCE = 0.25     -- optional: coins per lane
 
--- create / get remote
+local FORWARD_SPEED = 22
+
+-- Track each player's lane and movement
+local playerData = {}
+
+-- create / get remotes
 local advanceEvent = ReplicatedStorage:FindFirstChild("RunnerAdvance")
 if not advanceEvent then
 	advanceEvent = Instance.new("RemoteEvent")
 	advanceEvent.Name = "RunnerAdvance"
 	advanceEvent.Parent = ReplicatedStorage
 end
+
+local laneEvent = ReplicatedStorage:FindFirstChild("LaneSwitch")
+if not laneEvent then
+	laneEvent = Instance.new("RemoteEvent")
+	laneEvent.Name = "LaneSwitch"
+	laneEvent.Parent = ReplicatedStorage
+end
+
+local jumpEvent = ReplicatedStorage:FindFirstChild("PlayerJump")
+if not jumpEvent then
+	jumpEvent = Instance.new("RemoteEvent")
+	jumpEvent.Name = "PlayerJump"
+	jumpEvent.Parent = ReplicatedStorage
+end
+
+-- Helper to get root part (works with custom characters without HumanoidRootPart)
+local function getRootPart(char)
+	if not char then return nil end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if hrp then return hrp end
+	if char.PrimaryPart then return char.PrimaryPart end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.RootPart then return hum.RootPart end
+	return char:FindFirstChildWhichIsA("BasePart")
+end
+
+-- Setup movement constraints on character
+local function setupCharacterMovement(player, char)
+	task.wait(0.3)
+
+	local rootPart = getRootPart(char)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+
+	if not rootPart or not hum then
+		warn("Could not find root part or humanoid for", player.Name)
+		return
+	end
+
+	-- Initialize player data
+	playerData[player] = {
+		laneIndex = 2,
+		rootPart = rootPart,
+		humanoid = hum
+	}
+
+	-- Remove any existing movers
+	local existingVel = rootPart:FindFirstChild("RunnerVelocity")
+	if existingVel then existingVel:Destroy() end
+	local existingGyro = rootPart:FindFirstChild("RunnerGyro")
+	if existingGyro then existingGyro:Destroy() end
+	local existingAttach = rootPart:FindFirstChild("RunnerAttachment")
+	if existingAttach then existingAttach:Destroy() end
+
+	-- Create attachment
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "RunnerAttachment"
+	attachment.Parent = rootPart
+
+	-- LinearVelocity for forward movement
+	local linearVel = Instance.new("LinearVelocity")
+	linearVel.Name = "RunnerVelocity"
+	linearVel.Attachment0 = attachment
+	linearVel.RelativeTo = Enum.ActuatorRelativeTo.World
+	linearVel.MaxForce = 100000
+	linearVel.VectorVelocity = Vector3.new(0, 0, -FORWARD_SPEED)
+	linearVel.Parent = rootPart
+
+	-- AlignOrientation to face forward
+	local alignOri = Instance.new("AlignOrientation")
+	alignOri.Name = "RunnerGyro"
+	alignOri.Attachment0 = attachment
+	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	alignOri.MaxTorque = 200000
+	alignOri.Responsiveness = 100
+	alignOri.CFrame = CFrame.Angles(0, 0, 0)
+	alignOri.Parent = rootPart
+
+	-- Position in center lane
+	local pos = rootPart.Position
+	rootPart.CFrame = CFrame.new(LANE_X[2], pos.Y, pos.Z)
+end
+
+-- Handle lane switch from client
+laneEvent.OnServerEvent:Connect(function(player, newLaneIndex)
+	local data = playerData[player]
+	if not data then return end
+
+	newLaneIndex = math.clamp(newLaneIndex, 1, #LANE_X)
+	data.laneIndex = newLaneIndex
+
+	local rootPart = data.rootPart
+	if rootPart and rootPart.Parent then
+		local pos = rootPart.Position
+		local targetX = LANE_X[newLaneIndex]
+		rootPart.CFrame = CFrame.new(targetX, pos.Y, pos.Z)
+	end
+end)
+
+-- Handle jump from client
+jumpEvent.OnServerEvent:Connect(function(player)
+	local data = playerData[player]
+	if not data then return end
+
+	local hum = data.humanoid
+	if hum and hum.Parent then
+		hum.Jump = true
+	end
+end)
+
+-- Clean up when player leaves
+Players.PlayerRemoving:Connect(function(player)
+	playerData[player] = nil
+end)
 
 -- SETTINGS
 local SEGMENT_LENGTH = 50
@@ -235,11 +353,11 @@ local function placeOnTrack(player, character)
 	local firstSeg = segments[1]
 	if not firstSeg.PrimaryPart then return end
 
-	local hrp = character:FindFirstChild("HumanoidRootPart")
-	if hrp then
+	local rootPart = getRootPart(character)
+	if rootPart then
 		local pos = firstSeg.PrimaryPart.Position
 		-- stand on it and look forward (toward -Z)
-		hrp.CFrame = CFrame.new(pos + Vector3.new(0, 5, 5), pos + Vector3.new(0, 5, -200))
+		rootPart.CFrame = CFrame.new(pos + Vector3.new(0, 5, 5), pos + Vector3.new(0, 5, -200))
 	end
 end
 
@@ -250,6 +368,7 @@ Players.PlayerAdded:Connect(function(player)
 			buildInitialTrack()
 		end
 		placeOnTrack(player, char)
+		setupCharacterMovement(player, char)
 	end)
 end)
 
@@ -270,14 +389,14 @@ end)
 
 -- still keep fall-to-death
 RunService.Heartbeat:Connect(function()
-	local player = Players:GetPlayers()[1]
-	if not player then return end
-	local char = player.Character
-	if not char then return end
+	for _, player in ipairs(Players:GetPlayers()) do
+		local char = player.Character
+		if not char then continue end
 
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hrp and hum and hrp.Position.Y < (START_Y - 10) then
-		hum.Health = 0
+		local rootPart = getRootPart(char)
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if rootPart and hum and rootPart.Position.Y < (START_Y - 10) then
+			hum.Health = 0
+		end
 	end
 end)
