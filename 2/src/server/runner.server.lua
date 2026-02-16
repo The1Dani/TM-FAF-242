@@ -35,7 +35,12 @@ if not jumpEvent then
 	jumpEvent.Name = "PlayerJump"
 	jumpEvent.Parent = ReplicatedStorage
 end
-
+local playSoundEvent = ReplicatedStorage:FindFirstChild("PlayMoveSound")
+if not playSoundEvent then
+	playSoundEvent = Instance.new("RemoteEvent")
+	playSoundEvent.Name = "PlayMoveSound"
+	playSoundEvent.Parent = ReplicatedStorage
+end
 -- Helper to get root part (works with custom characters without HumanoidRootPart)
 local function getRootPart(char)
 	if not char then return nil end
@@ -381,10 +386,14 @@ advanceEvent.OnServerEvent:Connect(function(player)
 		table.remove(segments, 1)
 	end
 
+
+
 	-- create a new one farther
 	lastIndexSpawned += 1
 	local newSeg = createSegment(lastIndexSpawned)
 	table.insert(segments, newSeg)
+
+	playSoundEvent:FireClient(player)
 end)
 
 -- still keep fall-to-death
