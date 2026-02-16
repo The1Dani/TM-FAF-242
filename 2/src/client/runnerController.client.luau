@@ -27,7 +27,7 @@ player.CharacterAdded:Connect(function(character)
         local deathSound = ReplicatedStorage:WaitForChild("Kill"):Clone()
         deathSound.Parent = workspace -- parent somewhere in the world
         deathSound:Play()
-        
+
         -- Clean up after it finishes
         deathSound.Ended:Connect(function()
             deathSound:Destroy()
