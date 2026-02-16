@@ -105,6 +105,48 @@ uiCorner.Parent = magnetIndicator
 print("✅ [MAGNET UI] All UI elements created and visible!")
 print("✅ [MAGNET UI] Indicator should be visible at position (20, 100)")
 
+-- Create Speed Multiplier Indicator
+local speedGui = Instance.new("ScreenGui")
+speedGui.Name = "SpeedGui"
+speedGui.ResetOnSpawn = false
+speedGui.IgnoreGuiInset = true
+speedGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+speedGui.Parent = playerGui
+
+local speedIndicator = Instance.new("Frame")
+speedIndicator.Name = "SpeedIndicator"
+speedIndicator.Size = UDim2.new(0, 150, 0, 50)
+speedIndicator.Position = UDim2.new(0, 20, 0, 180)  -- Below magnet indicator
+speedIndicator.BackgroundColor3 = Color3.fromRGB(50, 150, 255)  -- Blue
+speedIndicator.BorderSizePixel = 2
+speedIndicator.BorderColor3 = Color3.fromRGB(255, 255, 255)
+speedIndicator.Visible = true
+speedIndicator.ZIndex = 10
+speedIndicator.Parent = speedGui
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Name = "SpeedLabel"
+speedLabel.Size = UDim2.new(1, 0, 1, 0)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "1.0x"
+speedLabel.TextScaled = true
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.ZIndex = 11
+speedLabel.Parent = speedIndicator
+
+-- Speed indicator glow
+local speedStroke = Instance.new("UIStroke")
+speedStroke.Color = Color3.fromRGB(100, 200, 255)
+speedStroke.Thickness = 2
+speedStroke.Parent = speedIndicator
+
+local speedCorner = Instance.new("UICorner")
+speedCorner.CornerRadius = UDim.new(0, 8)
+speedCorner.Parent = speedIndicator
+
+print("✅ [SPEED UI] Speed indicator created at position (20, 180)")
+
 -- Track magnet time
 local magnetEndTime = 0
 local magnetActive = false
@@ -148,6 +190,30 @@ if magnetStatusEvent then
 	end)
 else
 	warn("❌ [MAGNET UI] Could not find MagnetStatus RemoteEvent!")
+end
+
+-- Listen for speed updates
+print("🔧 [SPEED UI] Waiting for SpeedUpdate RemoteEvent...")
+local speedUpdateEvent = ReplicatedStorage:WaitForChild("SpeedUpdate", 10)
+if speedUpdateEvent then
+	print("✅ [SPEED UI] Found SpeedUpdate RemoteEvent!")
+	speedUpdateEvent.OnClientEvent:Connect(function(multiplier)
+		print("⚡ [SPEED UI] Speed multiplier received:", multiplier)
+		speedLabel.Text = string.format("%.1f", multiplier) .. "x"
+
+		-- Color change based on speed
+		if multiplier <= 1.0 then
+			speedIndicator.BackgroundColor3 = Color3.fromRGB(50, 150, 255)  -- Blue
+		elseif multiplier <= 1.3 then
+			speedIndicator.BackgroundColor3 = Color3.fromRGB(100, 200, 100)  -- Green
+		elseif multiplier <= 1.6 then
+			speedIndicator.BackgroundColor3 = Color3.fromRGB(255, 200, 50)  -- Yellow
+		else
+			speedIndicator.BackgroundColor3 = Color3.fromRGB(255, 100, 50)  -- Orange
+		end
+	end)
+else
+	warn("❌ [SPEED UI] Could not find SpeedUpdate RemoteEvent!")
 end
 
 -- Update timer

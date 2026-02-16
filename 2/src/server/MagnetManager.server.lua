@@ -53,7 +53,7 @@ local function placeModel(model, pos, parent)
     end
   end
 
-  local yLift = (model.PrimaryPart.Size.Y / 2) + 1.5
+  local yLift = (model.PrimaryPart.Size.Y / 2) + 5 -- Raised from 1.5 to 5 studs above floor
   model:PivotTo(CFrame.new(pos + Vector3.new(0, yLift, 0)))
   model.Parent = parent or Workspace
 end

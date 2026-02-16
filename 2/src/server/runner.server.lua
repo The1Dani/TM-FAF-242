@@ -52,6 +52,13 @@ if not jumpEvent then
 	jumpEvent.Parent = ReplicatedStorage
 end
 
+local speedUpdateEvent = ReplicatedStorage:FindFirstChild("SpeedUpdate")
+if not speedUpdateEvent then
+	speedUpdateEvent = Instance.new("RemoteEvent")
+	speedUpdateEvent.Name = "SpeedUpdate"
+	speedUpdateEvent.Parent = ReplicatedStorage
+end
+
 -- Helper to get root part (works with custom characters without HumanoidRootPart)
 local function getRootPart(char)
 	if not char then return nil end
@@ -79,7 +86,8 @@ local function setupCharacterMovement(player, char)
 	playerData[player] = {
 		laneIndex = 2,
 		rootPart = rootPart,
-		humanoid = hum
+		humanoid = hum,
+		currentSpeed = FORWARD_SPEED  -- Track current speed
 	}
 
 	-- Remove any existing movers
@@ -103,6 +111,12 @@ local function setupCharacterMovement(player, char)
 	linearVel.MaxForce = 100000
 	linearVel.VectorVelocity = Vector3.new(0, 0, -FORWARD_SPEED)
 	linearVel.Parent = rootPart
+
+	-- Store reference to LinearVelocity for speed updates
+	playerData[player].linearVel = linearVel
+
+	-- Send initial speed multiplier to client (1.0x)
+	speedUpdateEvent:FireClient(player, 1.0)
 
 	-- AlignOrientation to face forward
 	local alignOri = Instance.new("AlignOrientation")
@@ -156,6 +170,7 @@ local SEGMENT_LENGTH = 50
 local SEGMENT_WIDTH = 30
 local START_Y = 50
 local SEGMENTS_AHEAD = 8       -- how many we keep in front
+local SAFE_ZONE_SEGMENTS = 2   -- No obstacles or cupcakes in first N segments
 local COIN_CHANCE = 0.4
 local OBSTACLE_CHANCE = 0.3
 local SPAWN_START_AHEAD = 8  -- studs; ~2 meters ≈ 2 studs, but use 6–12 for visibility
@@ -215,227 +230,42 @@ local function makePart(size, color, anchored, canCollide)
 end
 
 -- create one platform at index (0,1,2,3...) on NEGATIVE Z
-local function createSegment(index)local model = Instance.new("Model")
-model.Name = "Segment_" .. index
+local function createSegment(index)
+	local model = Instance.new("Model")
+	model.Name = "Segment_" .. index
 
-local floor = makePart(
- Vector3.new(SEGMENT_WIDTH, 2, SEGMENT_LENGTH),
- Color3.fromRGB(121, 200, 245),
- true,
- true
-)
-floor.CFrame = CFrame.new(0, START_Y, -index * SEGMENT_LENGTH)
-floor.Name = "Floor"
-floor.Parent = model
-model.PrimaryPart = floor
-local spawnLane = {}
-local count = 0
+	local floor = makePart(
+		Vector3.new(SEGMENT_WIDTH, 2, SEGMENT_LENGTH),
+		Color3.fromRGB(121, 200, 245),
+		true,
+		true
+	)
+	floor.CFrame = CFrame.new(0, START_Y, -index * SEGMENT_LENGTH)
+	floor.Name = "Floor"
+	floor.Parent = model
+	model.PrimaryPart = floor
+	local spawnLane = {}
+	local count = 0
 
-for i = 1, #LANE_X do
- spawnLane[i] = (math.random() < OBSTACLE_PER_LANE_CHANCE)
- if spawnLane[i] then count += 1 end
-end
+	-- Only spawn obstacles if not in safe zone
+	if index >= SAFE_ZONE_SEGMENTS then
+		for i = 1, #LANE_X do
+			spawnLane[i] = (math.random() < OBSTACLE_PER_LANE_CHANCE)
+			if spawnLane[i] then count += 1 end
+		end
 
--- prevent 3/3 blocked: force one random lane to be empty
-if count == #LANE_X then
- local open = math.random(1, #LANE_X)
- spawnLane[open] = false
- count -= 1
-end
-
-for i, laneX in ipairs(LANE_X) do
- -- remember obstacle Z for this lane (if any)
- local obstacleZ = nil
-
- -- spawn obstacle if pattern says so
- if spawnLane[i] then
-  local obstacle = makePart(Vector3.new(4, 6, 4), Color3.fromRGB(180, 20, 20), true, true)
-  obstacle.Name = "Obstacle"
-
-  obstacleZ = randomForwardZ(8)
-  obstacle.CFrame = floor.CFrame * CFrame.new(laneX, 4, obstacleZ)
-  obstacle.Parent = model
-
-  local hitOnce = false
-  obstacle.Touched:Connect(function(hit)
-   if hitOnce then return end
-   local character = hit:FindFirstAncestorOfClass("Model")
-   if not character then return end
-
-   local plr = Players:GetPlayerFromCharacter(character)
-   if not plr then return end
-
-   local hum = character:FindFirstChildOfClass("Humanoid")
-   if hum and hum.Health > 0 then
-    hitOnce = true
-    hum.Health = 0
-   end
-  end)
- end
-
- -- cupcake spawn
- if math.random() < COIN_PER_LANE_CHANCE then
-  local cupcake = cupcakeTemplate:Clone()
-  cupcake.Name = "Cupcake"
-
-  -- ensure PrimaryPart exists
-  if not cupcake.PrimaryPart then
-   local pp = cupcake:FindFirstChildWhichIsA("BasePart", true)
-   if pp then cupcake.PrimaryPart = pp end
-  end
-
-  if not cupcake.PrimaryPart then
-   -- If the cupcake model isn't set up correctly, skip placing this cupcake
-   warn("CupcakePickup has no BasePart inside it, can't place this cupcake. Skipping.")
-  else
-   -- make pickup parts
-   for _, d in ipairs(cupcake:GetDescendants()) do
-    if d:IsA("BasePart") then
-     d.Anchored = true
-     d.CanCollide = false
-     d.CanTouch = true
-     d.CanQuery = false
-    end
-   end
-
-   -- pick a cupcake Z that doesn't overlap the obstacle in same lane
-   local cupcakeZ = randomForwardZ(10)
-   local MIN_GAP_Z = 10 -- studs between cupcake and obstacle
-
-   if obstacleZ then
-    local tries = 0
-    while math.abs(cupcakeZ - obstacleZ) < MIN_GAP_Z and tries < 12 do
-     cupcakeZ = randomForwardZ(10)
-     tries += 1
-    end
-
-    -- fallback: if still too close, shove it forward/back
-    if math.abs(cupcakeZ - obstacleZ) < MIN_GAP_Z then
-     cupcakeZ = obstacleZ + (cupcakeZ >= obstacleZ and MIN_GAP_Z or -MIN_GAP_Z)
-     cupcakeZ = math.clamp(cupcakeZ, -SEGMENT_LENGTH/2 + 10, SEGMENT_LENGTH/2 - 10)
-    end
-   end
-
-   -- place it above the floor
-   local floorTopY = floor.Position.Y+2 + (floor.Size.Y / 2)
-   local yLift = (cupcake.PrimaryPart.Size.Y / 2) + 0.5
-
-   local worldPos = Vector3.new(floor.Position.X + laneX, floorTopY + yLift, floor.Position.Z + cupcakeZ)
-   cupcake:PivotTo(CFrame.new(worldPos))
-   cupcake.Parent = model
-
-   -- touch pickup (on PrimaryPart)
-   local collected = false
-   cupcake.PrimaryPart.Touched:Connect(function(hit)
-    if collected then return end
-
-    local character = hit:FindFirstAncestorOfClass("Model")
-    if not character then return end
-
-    local plr = Players:GetPlayerFromCharacter(character)
-    if not plr then return end
-
-    local ls = plr:FindFirstChild("leaderstats")
-    local score = ls and ls:FindFirstChild("Score") -- <- HERE
-    if not score then return end
-
-    collected = true
-    score.Value += 1
-    cupcake:Destroy()
-   end)
-  end
- end
-end
-
-
--- Add a Rainbow Gate at the end (front) of the segment every 10 segments
-if (index % 10) == 0 then
- local rainbowTemplate = ServerStorage:FindFirstChild("RainbowGate") or ReplicatedStorage:FindFirstChild("RainbowGate")
- -- If the asset wasn't present at initial check, try a short WaitForChild to handle startup ordering
- if not rainbowTemplate then
-  local ok = pcall(function()
-   -- try ServerStorage first with a short timeout
-   rainbowTemplate = ServerStorage:WaitForChild("RainbowGate", 1)
-  end)
-  if not rainbowTemplate then
-   -- fallback to ReplicatedStorage as a last resort
-   pcall(function()
-    rainbowTemplate = ReplicatedStorage:WaitForChild("RainbowGate", 1)
-   end)
-  end
- end
- if rainbowTemplate then
-  local gate = rainbowTemplate:Clone()
-  gate.Name = "RainbowGate_Segment_" .. index
-
-  -- ensure PrimaryPart exists
-  if not gate.PrimaryPart then
-   local pp = gate:FindFirstChildWhichIsA("BasePart", true)
-   if pp then gate.PrimaryPart = pp end
-  end
-
-  if gate.PrimaryPart then
-   -- make gate parts non-physical and anchored, and reduce radius (X/Z) by half
-   for _, d in ipairs(gate:GetDescendants()) do
-    if d:IsA("BasePart") then
-     -- halve the radius/width/depth but keep height the same
-     local sx, sy, sz = d.Size.X, d.Size.Y, d.Size.Z
-     d.Size = Vector3.new(sx * 0.5, sy, sz * 0.5)
-
-     d.Anchored = true
-     d.CanCollide = false
-     d.CanTouch = true
-     d.CanQuery = false
-    end
-   end
-
-   -- place the gate at the front edge of the floor (toward -Z)
-   local frontZ = floor.Position.Z - (SEGMENT_LENGTH / 2) - 2
-   local gateY = floor.Position.Y + (floor.Size.Y / 2) + (gate.PrimaryPart.Size.Y / 2)
-   local gatePos = Vector3.new(floor.Position.X, gateY, frontZ)
-   gate:PivotTo(CFrame.new(gatePos))
-   gate.Parent = model
-  else
-   warn("RainbowGate model has no BasePart; cannot position it.")
-   gate.Parent = model
-  end
- else
-  warn("RainbowGate not found in ServerStorage; skipping gate placement for segment", index)
- end
-end
-
-model.Parent = Workspace
-return model
-end
-do
- local function createSegment(index)
-  local model = Instance.new("Model")
-model.Name = "Segment_" .. index
-
-local floor = makePart(
-	Vector3.new(SEGMENT_WIDTH, 2, SEGMENT_LENGTH),
-	Color3.fromRGB(121, 200, 245),
-	true,
-	true
-)
-floor.CFrame = CFrame.new(0, START_Y, -index * SEGMENT_LENGTH)
-floor.Name = "Floor"
-floor.Parent = model
-model.PrimaryPart = floor
-local spawnLane = {}
-local count = 0
-
-for i = 1, #LANE_X do
-	spawnLane[i] = (math.random() < OBSTACLE_PER_LANE_CHANCE)
-	if spawnLane[i] then count += 1 end
-end
-
--- prevent 3/3 blocked: force one random lane to be empty
-if count == #LANE_X then
-	local open = math.random(1, #LANE_X)
-	spawnLane[open] = false
-	count -= 1
-end
+		-- prevent 3/3 blocked: force one random lane to be empty
+		if count == #LANE_X then
+			local open = math.random(1, #LANE_X)
+			spawnLane[open] = false
+			count -= 1
+		end
+	else
+		-- In safe zone: no obstacles
+		for i = 1, #LANE_X do
+			spawnLane[i] = false
+		end
+	end
 
 for i, laneX in ipairs(LANE_X) do
 -- remember obstacle Z for this lane (if any)
@@ -467,8 +297,8 @@ for i, laneX in ipairs(LANE_X) do
 		end)
 	end
 
-	-- cupcake spawn
-	if math.random() < COIN_PER_LANE_CHANCE then
+	-- cupcake spawn - only if not in safe zone
+	if index >= SAFE_ZONE_SEGMENTS and math.random() < COIN_PER_LANE_CHANCE then
 		local cupcake = cupcakeTemplate:Clone()
 		cupcake.Name = "Cupcake"
 
@@ -550,59 +380,95 @@ end
 		if not ok then warn("MagnetManager.SpawnOnSegment error: ", err) end
 	end
 
--- Add a Rainbow Gate at the end (front) of the segment
-local rainbowTemplate = ServerStorage:FindFirstChild("RainbowGate") or ReplicatedStorage:FindFirstChild("RainbowGate")
--- If the asset wasn't present at initial check, try a short WaitForChild to handle startup ordering
-if not rainbowTemplate then
-	local ok = pcall(function()
-		-- try ServerStorage first with a short timeout
-		rainbowTemplate = ServerStorage:WaitForChild("RainbowGate", 1)
-	end)
-	if not rainbowTemplate then
-		-- fallback to ReplicatedStorage as a last resort
-		pcall(function()
-			rainbowTemplate = ReplicatedStorage:WaitForChild("RainbowGate", 1)
-		end)
-	end
-end
-if rainbowTemplate then
-	local gate = rainbowTemplate:Clone()
-	gate.Name = "RainbowGate_Segment_" .. index
-
-	-- ensure PrimaryPart exists
-	if not gate.PrimaryPart then
-		local pp = gate:FindFirstChildWhichIsA("BasePart", true)
-		if pp then gate.PrimaryPart = pp end
-	end
-
-	if gate.PrimaryPart then
-		-- make gate parts non-physical and anchored
-		for _, d in ipairs(gate:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-				d.CanTouch = true
-				d.CanQuery = false
+	-- Add a Rainbow Gate every 10 segments
+	if index % 10 == 0 then
+		local rainbowTemplate = ServerStorage:FindFirstChild("RainbowGate") or ReplicatedStorage:FindFirstChild("RainbowGate")
+		-- If the asset wasn't present at initial check, try a short WaitForChild to handle startup ordering
+		if not rainbowTemplate then
+			local ok = pcall(function()
+				-- try ServerStorage first with a short timeout
+				rainbowTemplate = ServerStorage:WaitForChild("RainbowGate", 1)
+			end)
+			if not rainbowTemplate then
+				-- fallback to ReplicatedStorage as a last resort
+				pcall(function()
+					rainbowTemplate = ReplicatedStorage:WaitForChild("RainbowGate", 1)
+				end)
 			end
 		end
+		if rainbowTemplate then
+			local gate = rainbowTemplate:Clone()
+			gate.Name = "RainbowGate_Segment_" .. index
 
-		-- place the gate at the front edge of the floor (toward -Z)
-		local frontZ = floor.Position.Z - (SEGMENT_LENGTH / 2) - 2
-		local gateY = floor.Position.Y + (floor.Size.Y / 2) + (gate.PrimaryPart.Size.Y / 2)
-		local gatePos = Vector3.new(floor.Position.X, gateY, frontZ)
-		gate:PivotTo(CFrame.new(gatePos))
-		gate.Parent = model
-	else
-		warn("RainbowGate model has no BasePart; cannot position it.")
-		gate.Parent = model
+			-- ensure PrimaryPart exists
+			if not gate.PrimaryPart then
+				local pp = gate:FindFirstChildWhichIsA("BasePart", true)
+				if pp then gate.PrimaryPart = pp end
+			end
+
+			if gate.PrimaryPart then
+				-- make gate parts non-physical and anchored
+				for _, d in ipairs(gate:GetDescendants()) do
+					if d:IsA("BasePart") then
+						d.Anchored = true
+						d.CanCollide = false
+						d.CanTouch = true
+						d.CanQuery = false
+					end
+				end
+
+				-- place the gate at the front edge of the floor (toward -Z)
+				local frontZ = floor.Position.Z - (SEGMENT_LENGTH / 2) - 2
+				local gateY = floor.Position.Y + (floor.Size.Y / 2) + (gate.PrimaryPart.Size.Y / 2)
+				local gatePos = Vector3.new(floor.Position.X, gateY, frontZ)
+				gate:PivotTo(CFrame.new(gatePos))
+				gate.Parent = model
+
+				-- Add touch detection for speed boost
+				local SPEED_BOOST = 5  -- Boost speed by 5 studs/sec per gate
+				local touchedPlayers = {}  -- Track who's already touched this gate
+
+				gate.PrimaryPart.Touched:Connect(function(hit)
+					local character = hit:FindFirstAncestorOfClass("Model")
+					if not character then return end
+
+					local player = Players:GetPlayerFromCharacter(character)
+					if not player then return end
+
+					-- Only boost once per player per gate
+					local gateId = gate:GetFullName()
+					local playerGateKey = player.UserId .. "_" .. gateId
+					if touchedPlayers[playerGateKey] then return end
+					touchedPlayers[playerGateKey] = true
+
+					-- Increase player's speed
+					local data = playerData[player]
+					if data and data.linearVel then
+						data.currentSpeed = data.currentSpeed + SPEED_BOOST
+						data.linearVel.VectorVelocity = Vector3.new(0, 0, -data.currentSpeed)
+
+						-- Calculate speed multiplier (relative to starting speed)
+						local speedMultiplier = data.currentSpeed / FORWARD_SPEED
+
+						-- Send speed update to client
+						speedUpdateEvent:FireClient(player, speedMultiplier)
+
+						print(player.Name .. " passed through rainbow gate! Speed boosted to " .. data.currentSpeed .. " (" .. string.format("%.2f", speedMultiplier) .. "x)")
+					end
+
+				end)
+
+			else
+				warn("RainbowGate model has no BasePart; cannot position it.")
+				gate.Parent = model
+			end
+		else
+			warn("RainbowGate not found in ServerStorage; skipping gate placement for segment", index)
+		end
 	end
-else
-	warn("RainbowGate not found in ServerStorage; skipping gate placement for segment", index)
-end
 
-model.Parent = Workspace
-return model
-end
+	model.Parent = Workspace
+ return model
 end
 -- build initial 8 segments
 local function buildInitialTrack()

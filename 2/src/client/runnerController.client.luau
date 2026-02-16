@@ -7,6 +7,9 @@ local ContextActionService = game:GetService("ContextActionService")
 local player = Players.LocalPlayer
 local advanceEvent = ReplicatedStorage:WaitForChild("RunnerAdvance")
 
+-- Sound reference (created per character spawn)
+local moveSound = nil
+
 -- Create remote for lane switching
 local laneEvent = ReplicatedStorage:FindFirstChild("LaneSwitch")
 if not laneEvent then
@@ -14,6 +17,23 @@ if not laneEvent then
 	laneEvent.Name = "LaneSwitch"
 	laneEvent.Parent = ReplicatedStorage
 end
+
+
+player.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid")
+
+    humanoid.Died:Connect(function()
+        -- Clone the sound from ReplicatedStorage
+        local deathSound = ReplicatedStorage:WaitForChild("Kill"):Clone()
+        deathSound.Parent = workspace -- parent somewhere in the world
+        deathSound:Play()
+
+        -- Clean up after it finishes
+        deathSound.Ended:Connect(function()
+            deathSound:Destroy()
+        end)
+    end)
+end)
 
 local jumpEvent = ReplicatedStorage:FindFirstChild("PlayerJump")
 if not jumpEvent then
@@ -71,6 +91,12 @@ player.CharacterAdded:Connect(function(char)
 		nextTriggerZ = rootPart.Position.Z - (SEGMENT_LENGTH * TRIGGER_MULT)
 	end
 
+	-- Create sound for this character
+	moveSound = Instance.new("Sound")
+	moveSound.SoundId = "rbxassetid://139421450430380"
+	moveSound.Volume = 1.0
+	moveSound.Parent = player:WaitForChild("PlayerGui")
+
 	-- Reset lane
 	laneIndex = 2
 end)
@@ -82,10 +108,12 @@ UIS.InputBegan:Connect(function(input, gpe)
 	if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.Left then
 		laneIndex = clampLane(laneIndex - 1)
 		laneEvent:FireServer(laneIndex)
+		if moveSound then moveSound:Play() end
 
 	elseif input.KeyCode == Enum.KeyCode.D or input.KeyCode == Enum.KeyCode.Right then
 		laneIndex = clampLane(laneIndex + 1)
 		laneEvent:FireServer(laneIndex)
+		if moveSound then moveSound:Play() end
 
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		jumpEvent:FireServer()
