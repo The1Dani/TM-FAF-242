@@ -4,6 +4,25 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local cupcakeTemplate = ServerStorage:WaitForChild("Cupcake")
+-- Try to require MagnetManager from common services (ServerStorage, ServerScriptService, ReplicatedStorage)
+local function safeRequireModule(name)
+	local services = {ServerStorage, game:GetService("ServerScriptService"), ReplicatedStorage}
+	for _, svc in ipairs(services) do
+		local mod = svc:FindFirstChild(name)
+		if mod then
+			local ok, res = pcall(require, mod)
+			if ok then
+				return res
+			else
+				warn("Failed to require " .. name .. " from " .. svc.Name .. ": " .. tostring(res))
+			end
+		end
+	end
+	warn("Module " .. name .. " not found in ServerStorage/ServerScriptService/ReplicatedStorage")
+	return nil
+end
+
+local MagnetManager = safeRequireModule("MagnetManager") or {}
 
 local LANE_X = { -10, 0, 10 }
 local OBSTACLE_PER_LANE_CHANCE = 0.55 -- chance each lane gets an obstacle on a segment
@@ -120,6 +139,12 @@ laneEvent.OnServerEvent:Connect(function(player, newLaneIndex)
 end)
 
 -- Handle jump from client
+	-- let MagnetManager possibly add magnets to this segment
+	if MagnetManager and type(MagnetManager.SpawnOnSegment) == "function" then
+		-- pcall to avoid breaking segment creation if the module errors
+		local ok, err = pcall(function() MagnetManager.SpawnOnSegment(model) end)
+		if not ok then warn("MagnetManager.SpawnOnSegment error: ", err) end
+	end
 jumpEvent.OnServerEvent:Connect(function(player)
 	local data = playerData[player]
 	if not data then return end
@@ -329,6 +354,8 @@ local function createSegment(index)
 				cupcake:Destroy()
 			end)
 		end
+
+
 	end
 
 
