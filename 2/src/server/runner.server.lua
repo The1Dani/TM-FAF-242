@@ -4,28 +4,25 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local cupcakeTemplate = ServerStorage:WaitForChild("Cupcake")
--- Try to require MagnetManager from common services (ServerStorage, ServerScriptService, ReplicatedStorage)
-local function safeRequireModule(name)
-	local services = {ServerStorage, game:GetService("ServerScriptService"), ReplicatedStorage}
-	for _, svc in ipairs(services) do
-		local mod = svc:FindFirstChild(name)
-		if mod then
-			local ok, res = pcall(require, mod)
-			if ok then
-				return res
-			else
-				warn("Failed to require " .. name .. " from " .. svc.Name .. ": " .. tostring(res))
-			end
-		end
-	end
-	warn("Module " .. name .. " not found in ServerStorage/ServerScriptService/ReplicatedStorage")
-	return nil
-end
 
-local MagnetManager = safeRequireModule("MagnetManager") or {}
+-- Wait for MagnetManager to be available from _G (loaded by MagnetManager.server.lua)
+local MagnetManager
+task.spawn(function()
+	local timeout = 0
+	while not _G.MagnetManager and timeout < 50 do
+		task.wait(0.1)
+		timeout = timeout + 1
+	end
+	MagnetManager = _G.MagnetManager
+	if MagnetManager then
+		print("runner.server.lua: MagnetManager connected")
+	else
+		warn("runner.server.lua: MagnetManager not found in _G after timeout")
+	end
+end)
 
 local LANE_X = { -10, 0, 10 }
-local OBSTACLE_PER_LANE_CHANCE = 0.55 -- chance each lane gets an obstacle on a segment
+local OBSTACLE_PER_LANE_CHANCE = 0.45 -- chance each lane gets an obstacle on a segment
 local COIN_PER_LANE_CHANCE = 0.25     -- optional: coins per lane
 
 local FORWARD_SPEED = 22
@@ -139,12 +136,6 @@ laneEvent.OnServerEvent:Connect(function(player, newLaneIndex)
 end)
 
 -- Handle jump from client
-	-- let MagnetManager possibly add magnets to this segment
-	if MagnetManager and type(MagnetManager.SpawnOnSegment) == "function" then
-		-- pcall to avoid breaking segment creation if the module errors
-		local ok, err = pcall(function() MagnetManager.SpawnOnSegment(model) end)
-		if not ok then warn("MagnetManager.SpawnOnSegment error: ", err) end
-	end
 jumpEvent.OnServerEvent:Connect(function(player)
 	local data = playerData[player]
 	if not data then return end
@@ -358,6 +349,12 @@ local function createSegment(index)
 
 	end
 
+	-- let MagnetManager possibly add magnets to this segment
+	if MagnetManager and type(MagnetManager.SpawnOnSegment) == "function" then
+		-- pcall to avoid breaking segment creation if the module errors
+		local ok, err = pcall(function() MagnetManager.SpawnOnSegment(model) end)
+		if not ok then warn("MagnetManager.SpawnOnSegment error: ", err) end
+	end
 
 	model.Parent = Workspace
 	return model

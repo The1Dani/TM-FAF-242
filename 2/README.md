@@ -15,3 +15,117 @@ rojo serve
 ```
 
 For more help, check out [the Rojo documentation](https://rojo.space/docs).
+
+## ✅ Magnet System - Subway Surfers Style! 🧲
+
+**Status:** Active with cupcake attraction and UI indicator!
+
+### Features:
+- **MagnetManager.server.lua** - Handles magnet spawning, tracking, and cupcake attraction
+- **UI Indicator** - Shows magnet status near the scoreboard with countdown timer
+  - Red glowing box with magnet icon 🧲
+  - Real-time countdown showing remaining time
+  - Pulse animation when time is running out (< 3 seconds)
+  - Automatically appears/disappears when magnet is active
+- Magnets spawn with 50% chance per segment
+- Magnet power lasts 10 seconds after pickup
+- Red neon cylinder appearance (3x3x3)
+- **Magnets automatically attract nearby cupcakes** (Subway Surfers style!)
+  - Attraction range: 50 studs
+  - Attraction speed: 30 studs/second
+  - Cupcakes fly towards the player automatically
+- Magnets are parented to segments and despawn automatically
+
+### How It Works:
+1. Pick up a red magnet powerup
+2. For the next 10 seconds, all cupcakes within 50 studs are pulled towards you
+3. Cupcakes automatically fly to your character - no need to aim!
+
+### Testing:
+1. Run `rojo serve`
+2. Connect in Roblox Studio
+3. Play the game and pick up a magnet
+4. Watch cupcakes fly towards you!
+5. Check Output console for:
+   - "MagnetManager loaded and exposed via _G"
+   - "[PlayerName] activated magnet power! (10s)"
+   - "[PlayerName]'s magnet power expired"
+
+### Configuration:
+Edit these values in `MagnetManager.server.lua`:
+- `MAGNET_DURATION = 10` - How long the effect lasts
+- `MAGNET_CHANCE = 0.5` - Spawn probability (50%)
+- `MAGNET_RANGE = 50` - Attraction distance
+- `MAGNET_SPEED = 30` - How fast cupcakes move towards player
+
+# ✅ Magnet UI Debug Fix Applied! 🧲✨
+
+## What Was Changed:
+
+### Logic.client.luau - Complete Rewrite
+- ✅ **Creates its own ScreenGui** (`MagnetIndicatorGui`) in PlayerGui
+- ✅ **Not dependent on script.Parent** - finds PlayerGui independently
+- ✅ **Always visible RED box** at position (20, 100) with "MAGNET [DEBUG]"
+- ✅ **Turns GREEN when magnet active** with "MAGNET ACTIVE!" text
+- ✅ **Extensive debug logging** at every step
+- ✅ **Subtle pulse animation** when waiting for magnet
+- ✅ **ZIndex = 10/11** to ensure visibility on top
+
+## What You'll See NOW:
+
+### Immediately on Game Start:
+```
+🟥 RED BOX at top-left corner
+   🧲 │ MAGNET [DEBUG]
+      │ WAITING
+```
+
+### When You Collect a Magnet:
+```
+🟩 GREEN BOX at top-left corner
+   🧲 │ MAGNET ACTIVE!
+      │ 9.8s (counting down)
+```
+
+### After Magnet Expires:
+```
+🟥 RED BOX returns
+   🧲 │ MAGNET [DEBUG]
+      │ WAITING
+```
+
+## Console Output (Check This!):
+
+You should see in Output:
+```
+🔧 [MAGNET UI] Script starting...
+🔧 [MAGNET UI] Found PlayerGui: PlayerGui
+🔧 [MAGNET UI] Found HUD ScreenGui: HUD
+🔧 [MAGNET UI] Found ScoreLabel: ScoreLabel
+🔧 [MAGNET UI] Created MagnetIndicatorGui: MagnetIndicatorGui
+✅ [MAGNET UI] Created MagnetIndicator Frame - Visible: true
+✅ [MAGNET UI] Created Icon
+✅ [MAGNET UI] Created Text Label
+✅ [MAGNET UI] Created Timer Label
+✅ [MAGNET UI] All UI elements created and visible!
+✅✅✅ [MAGNET UI] FULLY LOADED AND RUNNING! ✅✅✅
+👀 [MAGNET UI] Look at TOP-LEFT of screen for RED BOX!
+```
+
+## Test Steps:
+
+1. ✅ **Run** `rojo serve`
+2. ✅ **Connect** in Roblox Studio
+3. ✅ **Play** the game
+4. ✅ **Look at TOP-LEFT** - You should see the RED box IMMEDIATELY!
+5. ✅ **Collect a magnet** - Box turns GREEN, timer counts down
+6. ✅ **Check Output** - Should see all the debug messages
+
+## If You Still Don't See It:
+
+1. Check Output console for error messages in red
+2. Look for the ✅ messages confirming UI creation
+3. Check if script is even running (look for "Script starting..." message)
+4. Tell me what you see in Output!
+
+The indicator is now **ALWAYS VISIBLE** even without collecting a magnet, so you can confirm it's working! 🎮✨
