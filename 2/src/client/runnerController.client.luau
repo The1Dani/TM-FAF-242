@@ -7,10 +7,10 @@ local ContextActionService = game:GetService("ContextActionService")
 local player = Players.LocalPlayer
 local advanceEvent = ReplicatedStorage:WaitForChild("RunnerAdvance")
 
--- Sound reference (created per character spawn)
 local moveSound = nil
 
--- Create remote for lane switching
+local eatSoundEvent = ReplicatedStorage:WaitForChild("EatCupcakeSound")
+
 local laneEvent = ReplicatedStorage:FindFirstChild("LaneSwitch")
 if not laneEvent then
 	laneEvent = Instance.new("RemoteEvent")
@@ -44,7 +44,6 @@ end
 
 local FORWARD_SPEED = 22
 
--- lanes (must match server)
 local LANE_X = { -10, 0, 10 }
 local laneIndex = 2
 
@@ -56,7 +55,6 @@ local function clampLane(i)
 	return math.clamp(i, 1, #LANE_X)
 end
 
--- Block default movement
 local function blockMovement()
 	local function sink()
 		return Enum.ContextActionResult.Sink
@@ -67,7 +65,6 @@ local function blockMovement()
 	ContextActionService:BindAction("BlockDown", sink, false, Enum.KeyCode.Down)
 end
 
--- Helper to get the root part of the character (works with custom models)
 local function getRootPart(char)
 	if not char then return nil end
 	-- Try HumanoidRootPart first
@@ -101,7 +98,6 @@ player.CharacterAdded:Connect(function(char)
 	laneIndex = 2
 end)
 
--- Handle lane switching and jumping (send to server)
 UIS.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 
@@ -120,7 +116,6 @@ UIS.InputBegan:Connect(function(input, gpe)
 	end
 end)
 
--- Track segment triggers
 RunService.Heartbeat:Connect(function(dt)
 	local char = player.Character
 	if not char then return end
@@ -132,4 +127,23 @@ RunService.Heartbeat:Connect(function(dt)
 		advanceEvent:FireServer()
 		nextTriggerZ -= SEGMENT_LENGTH
 	end
+end)
+-- Cupcake eat sound listener
+task.spawn(function()
+	local eatSoundEvent = ReplicatedStorage:WaitForChild("eat_drycereal")
+
+	eatSoundEvent.OnClientEvent:Connect(function()
+		local soundTemplate = ReplicatedStorage:WaitForChild("EatSound")
+		local sound = soundTemplate:Clone()
+
+		local gui = player:FindFirstChild("PlayerGui")
+		if not gui then return end
+
+		sound.Parent = gui
+		sound:Play()
+
+		sound.Ended:Connect(function()
+			sound:Destroy()
+		end)
+	end)
 end)

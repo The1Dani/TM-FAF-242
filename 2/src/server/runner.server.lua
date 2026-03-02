@@ -4,6 +4,18 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local cupcakeTemplate = ServerStorage:WaitForChild("Cupcake")
+local milestoneEvent = ReplicatedStorage:FindFirstChild("MilestoneUIEvent")
+local eatingSoundEvent = ReplicatedStorage:FindFirstChild("EatCupcakeSound")
+if not eatingSoundEvent then
+	eatingSoundEvent = Instance.new("RemoteEvent")
+	eatingSoundEvent.Name = "EatCupcakeSound"
+	eatingSoundEvent.Parent = ReplicatedStorage
+end
+if not milestoneEvent then
+    milestoneEvent = Instance.new("RemoteEvent")
+    milestoneEvent.Name = "MilestoneUIEvent"
+    milestoneEvent.Parent = ReplicatedStorage
+end
 
 -- Wait for MagnetManager to be available from _G (loaded by MagnetManager.server.lua)
 local MagnetManager
@@ -87,7 +99,9 @@ local function setupCharacterMovement(player, char)
 		laneIndex = 2,
 		rootPart = rootPart,
 		humanoid = hum,
-		currentSpeed = FORWARD_SPEED  -- Track current speed
+		currentSpeed = FORWARD_SPEED,  -- Track current speed
+		distanceTravelled = 0,
+		milestoneIndex = 0
 	}
 
 	-- Remove any existing movers
@@ -188,32 +202,32 @@ local function randomForwardZ(margin)
 	return math.random(minZ, maxZ)
 end
 
-local function placeModelAt(model: Model, worldPos: Vector3)
-	-- Find a PrimaryPart (or assign one)
-	if not model.PrimaryPart then
-		local pp = model:FindFirstChildWhichIsA("BasePart", true)
-		if pp then model.PrimaryPart = pp end
-	end
-	if not model.PrimaryPart then
-		warn("CupcakePickup has no BasePart inside it.")
-		return
-	end
+-- local function placeModelAt(model: Model, worldPos: Vector3)
+-- 		-- Find a PrimaryPart (or assign one)
+-- 		if not model.PrimaryPart then
+-- 			local pp = model:FindFirstChildWhichIsA("BasePart", true)
+-- 			if pp then model.PrimaryPart = pp end
+-- 		end
+-- 		if not model.PrimaryPart then
+-- 			warn("CupcakePickup has no BasePart inside it.")
+-- 			return
+-- 		end
 
-	-- Make sure parts behave like a pickup
-	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") then
-			d.Anchored = true
-			d.CanCollide = false
-			d.CanTouch = true   -- IMPORTANT if we use touch pickup
-			d.CanQuery = true
-		end
-	end
+-- 		-- Make sure parts behave like a pickup
+-- 		for _, d in ipairs(model:GetDescendants()) do
+-- 			if d:IsA("BasePart") then
+-- 				d.Anchored = true
+-- 				d.CanCollide = false
+-- 				d.CanTouch = true   -- IMPORTANT if we use touch pickup
+-- 				d.CanQuery = true
+-- 			end
+-- 		end
 
-	-- Lift by half height so it sits on top of floor
-	local yLift = (model.PrimaryPart.Size.Y / 2) + 1.5
+-- 		-- Lift by half height so it sits on top of floor
+-- 		local yLift = (model.PrimaryPart.Size.Y / 2) + 1.5
 
-	model:PivotTo(CFrame.new(worldPos + Vector3.new(0, yLift, 0)))
-end
+-- 		model:PivotTo(CFrame.new(worldPos + Vector3.new(0, yLift, 0)))
+-- 	end
 
 
 -- make a part helper
@@ -365,7 +379,11 @@ for i, laneX in ipairs(LANE_X) do
 
 				collected = true
 				score.Value += 1
+
+
 				cupcake:Destroy()
+				eatingSoundEvent:FireClient(plr)
+
 			end)
 		end
 
@@ -525,13 +543,36 @@ end)
 -- still keep fall-to-death
 RunService.Heartbeat:Connect(function()
 	for _, player in ipairs(Players:GetPlayers()) do
-		local char = player.Character
-		if not char then continue end
+		 local data = playerData[player]
+        if not data then continue end
 
-		local rootPart = getRootPart(char)
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if rootPart and hum and rootPart.Position.Y < (START_Y - 10) then
-			hum.Health = 0
-		end
+        local rootPart = data.rootPart
+        local hum = data.humanoid
+        if rootPart and hum then
+            -- Fall to death
+            if rootPart.Position.Y < (START_Y - 10) then
+                hum.Health = 0
+            end
+
+            -- Increment distance (Z decreases, so subtract)
+            local dz = -data.linearVel.VectorVelocity.Z * deltaTime
+            data.distanceTravelled += dz
+
+            -- Check milestones (every 100 meters)
+            local milestone = math.floor(data.distanceTravelled / 100)
+            if milestone > data.milestoneIndex then
+                data.milestoneIndex = milestone
+                -- Fire client UI event
+                local message = ""
+                if milestone == 1 then
+                    message = "100 meters! You did it!"
+                elseif milestone == 2 then
+                    message = "200 meters! You are god!"
+                else
+                    message = milestone * 100 .. " meters!"
+                end
+                ReplicatedStorage:WaitForChild("MilestoneUIEvent"):FireClient(player, message)
+            end
+        end
 	end
 end)
