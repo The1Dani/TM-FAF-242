@@ -9,7 +9,8 @@ local advanceEvent = ReplicatedStorage:WaitForChild("RunnerAdvance")
 
 local moveSound = nil
 
-local eatSoundEvent = ReplicatedStorage:WaitForChild("EatCupcakeSound")
+local rainbowUIEvent = ReplicatedStorage:WaitForChild("RainbowGateUIEvent")
+local TweenService = game:GetService("TweenService")
 
 local laneEvent = ReplicatedStorage:FindFirstChild("LaneSwitch")
 if not laneEvent then
@@ -145,5 +146,75 @@ task.spawn(function()
 		sound.Ended:Connect(function()
 			sound:Destroy()
 		end)
+	end)
+end)
+
+local function animateRainbowLabel(label)
+    -- Initial state: invisible, center screen, big size
+    label.AnchorPoint = Vector2.new(0.5, 0.5)
+    label.Position = UDim2.new(0.5, 0, 0.5, -150) -- start above center
+    label.TextTransparency = 1
+    label.TextScaled = true
+    label.Visible = true
+    label.Size = UDim2.new(0, 500, 0, 150) -- bigger
+
+    -- Tween 1: slide down + fade in + scale up (pop)
+    local tweenInfo1 = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    local goal1 = {
+        Position = UDim2.new(0.5, 0, 0.5, 0), -- center of screen
+        TextTransparency = 0,
+        Size = UDim2.new(0, 600, 0, 180) -- grows slightly for emphasis
+    }
+    local tween1 = TweenService:Create(label, tweenInfo1, goal1)
+    tween1:Play()
+
+    -- Tween 2: tiny wiggle left/right
+    tween1.Completed:Connect(function()
+        local originalPos = label.Position
+        for i = 1, 3 do
+            local leftTween = TweenService:Create(label, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = originalPos + UDim2.new(0, -15, 0, 0)})
+            local rightTween = TweenService:Create(label, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = originalPos + UDim2.new(0, 15, 0, 0)})
+            local centerTween = TweenService:Create(label, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = originalPos})
+
+            leftTween:Play()
+            leftTween.Completed:Wait()
+            rightTween:Play()
+            rightTween.Completed:Wait()
+            centerTween:Play()
+            centerTween.Completed:Wait()
+        end
+    end)
+
+    -- After 2 seconds, tween out: slide up + fade + shrink
+    task.delay(2, function()
+        local tweenInfoOut = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        local goalOut = {
+            Position = UDim2.new(0.5, 0, 0.5, -150), -- slide back above center
+            TextTransparency = 1,
+            Size = UDim2.new(0, 500, 0, 150) -- shrink back to initial
+        }
+        local tweenOut = TweenService:Create(label, tweenInfoOut, goalOut)
+        tweenOut:Play()
+
+        tweenOut.Completed:Connect(function()
+            label.Visible = false
+        end)
+    end)
+end
+rainbowUIEvent.OnClientEvent:Connect(function()
+	local gui = player:WaitForChild("PlayerGui")
+	local rainbowUI = gui:WaitForChild("RainbowUI")
+	local label = rainbowUI:WaitForChild("RainbowLabel")
+
+	animateRainbowLabel(label)
+	-- optional: auto hide after 2 seconds
+	local soundTemplate = ReplicatedStorage:WaitForChild("RainbowSound") -- make sure you add a Sound in ReplicatedStorage
+	local sound = soundTemplate:Clone()
+	sound.Parent = gui
+	sound:Play()
+
+	-- Clean up after it finishes
+	sound.Ended:Connect(function()
+		sound:Destroy()
 	end)
 end)

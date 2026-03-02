@@ -70,7 +70,12 @@ if not speedUpdateEvent then
 	speedUpdateEvent.Name = "SpeedUpdate"
 	speedUpdateEvent.Parent = ReplicatedStorage
 end
-
+local rainbowUIEvent = ReplicatedStorage:FindFirstChild("RainbowGateUIEvent")
+if not rainbowUIEvent then
+	rainbowUIEvent = Instance.new("RemoteEvent")
+	rainbowUIEvent.Name = "RainbowGateUIEvent"
+	rainbowUIEvent.Parent = ReplicatedStorage
+end
 -- Helper to get root part (works with custom characters without HumanoidRootPart)
 local function getRootPart(char)
 	if not char then return nil end
@@ -470,10 +475,9 @@ end
 
 						-- Send speed update to client
 						speedUpdateEvent:FireClient(player, speedMultiplier)
-
+						rainbowUIEvent:FireClient(player)
 						print(player.Name .. " passed through rainbow gate! Speed boosted to " .. data.currentSpeed .. " (" .. string.format("%.2f", speedMultiplier) .. "x)")
 					end
-
 				end)
 
 			else
