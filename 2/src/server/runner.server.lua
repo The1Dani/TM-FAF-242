@@ -384,8 +384,29 @@ for i, laneX in ipairs(LANE_X) do
 
 				collected = true
 				score.Value += 1
+				local head = character:FindFirstChild("Head")
+if head then
+					local sparkle = Instance.new("ParticleEmitter")
+sparkle.Color = ColorSequence.new(Color3.fromRGB(255, 120, 200))
+					sparkle.Texture = "rbxassetid://243660364"
+					sparkle.Lifetime = NumberRange.new(0.5,1)
+					sparkle.Speed = NumberRange.new(4,8)
+					sparkle.SpreadAngle = Vector2.new(360,360)
 
+					-- IMPORTANT visibility settings
+					sparkle.Size = NumberSequence.new(1)
+					sparkle.Transparency = NumberSequence.new(0)
+					sparkle.LightEmission = 1
 
+					sparkle.Rate = 0
+					sparkle.Parent = head
+
+					sparkle:Emit(40)
+
+					task.delay(1,function()
+						sparkle:Destroy()
+					end)
+				end
 				cupcake:Destroy()
 				eatingSoundEvent:FireClient(plr)
 
@@ -545,7 +566,7 @@ advanceEvent.OnServerEvent:Connect(function(player)
 end)
 
 -- still keep fall-to-death
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(deltaTime)
 	for _, player in ipairs(Players:GetPlayers()) do
 		 local data = playerData[player]
         if not data then continue end
